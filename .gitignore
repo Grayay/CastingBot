@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Local database
+database/bot.db
+*.db
+
+# Env files
+.env
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

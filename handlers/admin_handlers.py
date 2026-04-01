@@ -1,0 +1,82 @@
+from config import ADMINS
+from handlers.casting_handlers import (
+    build_main_menu,
+    handle_casting_flow,
+    handle_legacy_casting_management,
+    handle_select_casting_action,
+    start_create_casting,
+    start_close_casting,
+    start_delete_casting,
+    start_view_responses,
+)
+from handlers.model_handlers import handle_model_flow, start_add_model
+from services.telegram_api import send_message
+from state import clear_user_state
+
+
+def _interrupt_and_start(chat_id, user_id, starter):
+    clear_user_state(user_id)
+    starter(chat_id, user_id)
+
+
+def handle_message(update):
+    message = update["message"]
+    chat_id = message["chat"]["id"]
+    user_id = message["from"]["id"]
+    text = message.get("text", "").strip()
+
+    if user_id not in ADMINS:
+        send_message(chat_id, "У вас нет доступа к этому боту.")
+        return
+
+    if text == "/start":
+        clear_user_state(user_id)
+        send_message(
+            chat_id,
+            "Добро пожаловать в систему управления кастингами.",
+            reply_markup=build_main_menu(),
+        )
+        return
+
+    if text == "Создать кастинг":
+        _interrupt_and_start(chat_id, user_id, start_create_casting)
+        return
+
+    if text == "Посмотреть отклики":
+        _interrupt_and_start(chat_id, user_id, start_view_responses)
+        return
+
+    if text == "Закрыть кастинг":
+        _interrupt_and_start(chat_id, user_id, start_close_casting)
+        return
+
+    if text == "Удалить кастинг":
+        _interrupt_and_start(chat_id, user_id, start_delete_casting)
+        return
+
+    if text == "Добавить модель":
+        _interrupt_and_start(chat_id, user_id, start_add_model)
+        return
+
+    if text == "Назад":
+        clear_user_state(user_id)
+        send_message(chat_id, "Главное меню.", reply_markup=build_main_menu())
+        return
+
+    if handle_model_flow(chat_id, user_id, text):
+        return
+
+    if handle_casting_flow(chat_id, user_id, text):
+        return
+
+    if handle_select_casting_action(chat_id, user_id, text):
+        return
+
+    if handle_legacy_casting_management(chat_id, user_id, text):
+        return
+
+    send_message(
+        chat_id,
+        "Используйте кнопки меню.",
+        reply_markup=build_main_menu(),
+    )
