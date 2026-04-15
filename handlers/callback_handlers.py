@@ -1,8 +1,8 @@
 from services.casting_service import (
     get_casting_by_message,
     response_exists,
-    save_response,
 )
+from handlers.response_handlers import start_response_comment_flow
 from services.model_service import find_model_for_user, update_model_telegram_id
 from services.telegram_api import answer_callback
 
@@ -48,5 +48,17 @@ def handle_callback(update):
         answer_callback(callback_id, "Вы уже откликались на этот кастинг.", show_alert=False)
         return
 
-    save_response(casting["id"], model["id"])
-    answer_callback(callback_id, "Отклик отправлен.", show_alert=False)
+    started = start_response_comment_flow(
+        user_id=user_id,
+        casting_id=casting["id"],
+        model_id=model["id"],
+    )
+    if not started:
+        answer_callback(
+            callback_id,
+            "Не удалось написать вам в личные сообщения. Откройте чат с ботом и нажмите /start.",
+            show_alert=True,
+        )
+        return
+
+    answer_callback(callback_id, "Проверьте личные сообщения для завершения отклика.", show_alert=False)

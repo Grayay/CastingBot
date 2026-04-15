@@ -10,6 +10,7 @@ from handlers.casting_handlers import (
     start_view_responses,
 )
 from handlers.model_handlers import handle_model_flow, start_add_model
+from handlers.response_handlers import handle_response_comment_flow, handle_start_response_payload
 from services.telegram_api import send_message
 from state import clear_user_state
 
@@ -24,18 +25,34 @@ def handle_message(update):
     chat_id = message["chat"]["id"]
     user_id = message["from"]["id"]
     text = message.get("text", "").strip()
+    username = message["from"].get("username")
+    if username:
+        username = "@" + username
+
+    if handle_response_comment_flow(chat_id, user_id, message):
+        return
+
+    if text.startswith("/start"):
+        parts = text.split(maxsplit=1)
+        payload = parts[1].strip() if len(parts) > 1 else None
+        if payload:
+            if handle_start_response_payload(chat_id, user_id, username, payload):
+                return
+
+        if user_id in ADMINS:
+            clear_user_state(user_id)
+            send_message(
+                chat_id,
+                "Добро пожаловать в систему управления кастингами.",
+                reply_markup=build_main_menu(),
+            )
+            return
+
+        send_message(chat_id, "Откройте ссылку отклика из поста кастинга.")
+        return
 
     if user_id not in ADMINS:
         send_message(chat_id, "У вас нет доступа к этому боту.")
-        return
-
-    if text == "/start":
-        clear_user_state(user_id)
-        send_message(
-            chat_id,
-            "Добро пожаловать в систему управления кастингами.",
-            reply_markup=build_main_menu(),
-        )
         return
 
     if text == "Создать кастинг":

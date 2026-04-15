@@ -14,13 +14,15 @@ def create_casting(title, description, admin_id, message_id, channel_id):
             message_id,
             channel_id
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (title.strip(), description.strip(), admin_id, message_id, channel_id),
     )
+    created_casting = cursor.fetchone()
     conn.commit()
 
-    return cursor.lastrowid
+    return created_casting["id"]
 
 
 def get_casting_by_message(channel_id, message_id):
@@ -31,7 +33,7 @@ def get_casting_by_message(channel_id, message_id):
         """
         SELECT *
         FROM castings
-        WHERE channel_id = ? AND message_id = ? AND is_deleted = 0
+        WHERE channel_id = %s AND message_id = %s AND is_deleted = FALSE
         """,
         (channel_id, message_id),
     )
@@ -49,7 +51,7 @@ def get_castings_by_admin(admin_id):
             COUNT(r.id) AS responses_count
         FROM castings c
         LEFT JOIN responses r ON r.casting_id = c.id
-        WHERE c.admin_id = ? AND c.is_deleted = 0
+        WHERE c.admin_id = %s AND c.is_deleted = FALSE
         GROUP BY c.id
         ORDER BY c.created_at DESC, c.id DESC
         """,
@@ -69,7 +71,7 @@ def get_casting_by_id_for_admin(casting_id, admin_id):
             COUNT(r.id) AS responses_count
         FROM castings c
         LEFT JOIN responses r ON r.casting_id = c.id
-        WHERE c.id = ? AND c.admin_id = ? AND c.is_deleted = 0
+        WHERE c.id = %s AND c.admin_id = %s AND c.is_deleted = FALSE
         GROUP BY c.id
         """,
         (casting_id, admin_id),
@@ -84,8 +86,8 @@ def close_casting(casting_id, admin_id):
     cursor.execute(
         """
         UPDATE castings
-        SET is_closed = 1
-        WHERE id = ? AND admin_id = ? AND is_deleted = 0
+        SET is_closed = TRUE
+        WHERE id = %s AND admin_id = %s AND is_deleted = FALSE
         """,
         (casting_id, admin_id),
     )
@@ -101,8 +103,8 @@ def delete_casting(casting_id, admin_id):
     cursor.execute(
         """
         UPDATE castings
-        SET is_deleted = 1
-        WHERE id = ? AND admin_id = ? AND is_deleted = 0
+        SET is_deleted = TRUE
+        WHERE id = %s AND admin_id = %s AND is_deleted = FALSE
         """,
         (casting_id, admin_id),
     )
@@ -119,23 +121,23 @@ def response_exists(casting_id, model_id):
         """
         SELECT id
         FROM responses
-        WHERE casting_id = ? AND model_id = ?
+        WHERE casting_id = %s AND model_id = %s
         """,
         (casting_id, model_id),
     )
     return cursor.fetchone() is not None
 
 
-def save_response(casting_id, model_id):
+def save_response(casting_id, model_id, comment=None):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        INSERT INTO responses (casting_id, model_id)
-        VALUES (?, ?)
+        INSERT INTO responses (casting_id, model_id, comment)
+        VALUES (%s, %s, %s)
         """,
-        (casting_id, model_id),
+        (casting_id, model_id, comment),
     )
     conn.commit()
 
@@ -149,12 +151,12 @@ def get_responses_for_casting(casting_id, admin_id):
         SELECT
             m.full_name,
             m.telegram_username,
-            m.portfolio_link,
+            r.comment,
             r.created_at
         FROM responses r
         JOIN models m ON m.id = r.model_id
         JOIN castings c ON c.id = r.casting_id
-        WHERE r.casting_id = ? AND c.admin_id = ? AND c.is_deleted = 0
+        WHERE r.casting_id = %s AND c.admin_id = %s AND c.is_deleted = FALSE
         ORDER BY r.created_at DESC, r.id DESC
         """,
         (casting_id, admin_id),

@@ -3,50 +3,55 @@ def create_tables(connection):
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS admins (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id INTEGER UNIQUE NOT NULL,
+        id BIGSERIAL PRIMARY KEY,
+        telegram_id BIGINT UNIQUE NOT NULL,
         name TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS models (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGSERIAL PRIMARY KEY,
         full_name TEXT NOT NULL,
         telegram_username TEXT NOT NULL UNIQUE,
-        telegram_id INTEGER,
-        portfolio_link TEXT NOT NULL,
-        added_by_admin_id INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        telegram_id BIGINT,
+        added_by_admin_id BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         FOREIGN KEY (added_by_admin_id) REFERENCES admins(id)
     )
     """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS castings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGSERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
-        admin_id INTEGER NOT NULL,
-        message_id INTEGER NOT NULL,
-        channel_id INTEGER NOT NULL,
-        is_closed INTEGER NOT NULL DEFAULT 0,
-        is_deleted INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        admin_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        channel_id BIGINT NOT NULL,
+        is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+        is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS responses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        casting_id INTEGER NOT NULL,
-        model_id INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        id BIGSERIAL PRIMARY KEY,
+        casting_id BIGINT NOT NULL,
+        model_id BIGINT NOT NULL,
+        comment TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(casting_id, model_id),
         FOREIGN KEY (casting_id) REFERENCES castings(id),
         FOREIGN KEY (model_id) REFERENCES models(id)
     )
+    """)
+
+    cursor.execute("""
+    ALTER TABLE responses
+    ADD COLUMN IF NOT EXISTS comment TEXT
     """)
 
     cursor.execute("""

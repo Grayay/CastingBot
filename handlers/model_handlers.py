@@ -35,23 +35,9 @@ def handle_model_flow(chat_id, user_id, text):
         return True
 
     if step == "username":
-        set_user_state(
-            user_id,
-            {
-                "flow": "add_model",
-                "step": "portfolio",
-                "full_name": state["full_name"],
-                "telegram_username": text.strip(),
-            },
-        )
-        send_message(chat_id, "Введите ссылку на портфолио.")
-        return True
-
-    if step == "portfolio":
         success, error_text = create_model(
             full_name=state["full_name"],
-            telegram_username=state["telegram_username"],
-            portfolio_link=text.strip(),
+            telegram_username=text.strip(),
             added_by_admin_id=user_id,
         )
 

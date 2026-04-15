@@ -89,3 +89,17 @@ def answer_callback(callback_query_id, text, show_alert=False):
         timeout=20,
     )
     return response.json()
+
+
+def edit_message_reply_markup(chat_id, message_id, reply_markup):
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "reply_markup": reply_markup,
+    }
+    response = requests.post(
+        f"{BASE_URL}/editMessageReplyMarkup",
+        json=payload,
+        timeout=20,
+    )
+    return response.json()

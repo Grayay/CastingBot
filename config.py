@@ -35,11 +35,31 @@ def _parse_admins(value, default):
     return [int(p) for p in parts if p]
 
 
+def _build_casting_channels(default_channel_id):
+    channels = []
+    for index in range(1, 7):
+        title = (os.getenv(f"CASTING_CHANNEL_{index}_NAME") or f"Канал {index}").strip()
+        channel_id = _parse_int(
+            os.getenv(f"CASTING_CHANNEL_{index}_ID"),
+            default=default_channel_id,
+        )
+        channels.append(
+            {
+                "key": f"channel_{index}",
+                "title": title,
+                "id": channel_id,
+            }
+        )
+    return channels
+
+
 # Secrets must come from environment on VPS
 BOT_TOKEN = os.getenv("BOT_TOKEN") or "PUT_BOT_TOKEN_HERE"
+BOT_USERNAME = (os.getenv("BOT_USERNAME") or "").strip().lstrip("@")
 
 # Пример: -1001234567890
 CHANNEL_ID = _parse_int(os.getenv("CHANNEL_ID"), default=-1003677854141)
+CASTING_CHANNELS = _build_casting_channels(CHANNEL_ID)
 
 # Telegram ID администраторов (comma-separated in env: "123,456")
 ADMINS = _parse_admins(os.getenv("ADMINS"), default=[2081888103, 1640758237, 2081888103])

@@ -1,6 +1,7 @@
 import re
 
-from config import CHANNEL_ID
+from config import BOT_USERNAME, CASTING_CHANNELS
+from handlers.response_handlers import build_respond_payload
 from services.casting_service import (
     close_casting,
     create_casting,
@@ -9,7 +10,7 @@ from services.casting_service import (
     get_castings_by_admin,
     get_responses_for_casting,
 )
-from services.telegram_api import send_channel_message, send_message
+from services.telegram_api import edit_message_reply_markup, send_channel_message, send_message
 from state import clear_user_state, get_user_state, set_user_state
 
 
@@ -48,14 +49,42 @@ def _format_responses_text(casting, responses):
     if responses:
         lines.append("")
         for index, response in enumerate(responses, start=1):
-            username = response["telegram_username"]
-            lines.append(
-                f"{index}. {response['full_name']}\n"
-                f"{username}\n"
-                f"{response['portfolio_link']}"
-            )
+            main_line = f"{index}. {response['full_name']} — {response['telegram_username']}"
+            comment = (response.get("comment") or "").strip()
+            if comment:
+                lines.append(f"{main_line}\nКомментарий: {comment}")
+            else:
+                lines.append(main_line)
 
     return "\n\n".join(lines)
+
+
+def _channel_choice_items():
+    return [
+        {
+            "key": channel["key"],
+            "title": channel["title"],
+            "id": channel["id"],
+            "button_text": f"{index}. {channel['title']}",
+        }
+        for index, channel in enumerate(CASTING_CHANNELS, start=1)
+    ]
+
+
+def _build_channel_selection_keyboard():
+    keyboard = [[{"text": channel["button_text"]}] for channel in _channel_choice_items()]
+    return {
+        "keyboard": keyboard,
+        "resize_keyboard": True,
+    }
+
+
+def _get_channel_by_button_text(text):
+    normalized_text = (text or "").strip()
+    for channel in _channel_choice_items():
+        if normalized_text == channel["button_text"]:
+            return channel
+    return None
 
 
 def start_create_casting(chat_id, user_id):
@@ -90,26 +119,40 @@ def handle_casting_flow(chat_id, user_id, text):
         return True
 
     if step == "description":
+        set_user_state(
+            user_id,
+            {
+                "flow": "create_casting",
+                "step": "channel",
+                "title": state["title"],
+                "description": text.strip(),
+            },
+        )
+        send_message(
+            chat_id,
+            "Выберите канал для публикации кастинга.",
+            reply_markup=_build_channel_selection_keyboard(),
+        )
+        return True
+
+    if step == "channel":
         title = state["title"]
-        description = text.strip()
+        description = state["description"]
+        selected_channel = _get_channel_by_button_text(text)
+        if not selected_channel:
+            send_message(
+                chat_id,
+                "Выберите канал кнопкой из списка.",
+                reply_markup=_build_channel_selection_keyboard(),
+            )
+            return True
 
-        reply_markup = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "Откликнуться",
-                        "callback_data": "respond_casting",
-                    }
-                ]
-            ]
-        }
-
+        channel_id = selected_channel["id"]
         post_text = f"📢 {title}\n\n{description}"
 
         result = send_channel_message(
-            CHANNEL_ID,
+            channel_id,
             post_text,
-            reply_markup=reply_markup,
         )
 
         if not result.get("ok"):
@@ -124,8 +167,31 @@ def handle_casting_flow(chat_id, user_id, text):
             description=description,
             admin_id=user_id,
             message_id=message_id,
-            channel_id=CHANNEL_ID,
+            channel_id=channel_id,
         )
+
+        if not BOT_USERNAME:
+            clear_user_state(user_id)
+            send_message(chat_id, "Кастинг опубликован, но не настроен BOT_USERNAME для кнопки отклика.")
+            return True
+
+        payload = build_respond_payload(channel_id, message_id)
+        response_url = f"https://t.me/{BOT_USERNAME}?start={payload}"
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "Откликнуться",
+                        "url": response_url,
+                    }
+                ]
+            ]
+        }
+        edit_result = edit_message_reply_markup(channel_id, message_id, reply_markup)
+        if not edit_result.get("ok"):
+            clear_user_state(user_id)
+            send_message(chat_id, "Кастинг опубликован, но кнопку отклика не удалось обновить.")
+            return True
 
         clear_user_state(user_id)
         send_message(chat_id, "Кастинг опубликован.", reply_markup=build_main_menu())
