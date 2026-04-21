@@ -1,7 +1,11 @@
 import re
 
 from services.casting_service import get_casting_by_message, response_exists, save_response
-from services.model_service import find_model_for_user, update_model_telegram_id
+from services.model_service import (
+    create_or_get_self_registered_model,
+    find_model_for_user,
+    update_model_telegram_id,
+)
 from services.telegram_api import send_message
 from state import clear_user_state, get_user_state, set_user_state
 
@@ -74,7 +78,16 @@ def handle_start_response_payload(chat_id, user_id, username, payload):
 
     model = find_model_for_user(user_id, username)
     if not model:
-        send_message(chat_id, "Вас нет в базе, напишите администратору.")
+        set_user_state(
+            user_id,
+            {
+                "flow": "first_time_registration",
+                "step": "await_full_name",
+                "casting_id": casting["id"],
+                "username": username,
+            },
+        )
+        send_message(chat_id, "Вы впервые откликаетесь. Введите ваше ФИО одним сообщением.")
         return True
 
     if model["telegram_id"] is None:
@@ -89,6 +102,52 @@ def handle_start_response_payload(chat_id, user_id, username, payload):
         casting_id=casting["id"],
         model_id=model["id"],
     )
+    return True
+
+
+def handle_first_time_registration_flow(chat_id, user_id, message):
+    state = get_user_state(user_id)
+
+    if state.get("flow") != "first_time_registration" or state.get("step") != "await_full_name":
+        return False
+
+    casting_id = state.get("casting_id")
+    username = state.get("username")
+    if not casting_id:
+        clear_user_state(user_id)
+        send_message(chat_id, "Сессия регистрации сброшена. Откликнитесь на кастинг снова.")
+        return True
+
+    text = message.get("text")
+    if text is None:
+        send_message(chat_id, "Введите ФИО текстом одним сообщением.")
+        return True
+
+    full_name = text.strip()
+    if not full_name:
+        send_message(chat_id, "ФИО не может быть пустым. Введите ФИО одним сообщением.")
+        return True
+
+    model, _ = create_or_get_self_registered_model(
+        full_name=full_name,
+        telegram_id=user_id,
+        username=username,
+    )
+    if not model:
+        send_message(chat_id, "Не удалось завершить регистрацию. Попробуйте позже.")
+        return True
+
+    if model.get("telegram_id") is None:
+        update_model_telegram_id(model["id"], user_id)
+
+    if response_exists(casting_id, model["id"]):
+        clear_user_state(user_id)
+        send_message(chat_id, "Вы уже откликались на этот кастинг.")
+        return True
+
+    save_response(casting_id, model["id"], comment=None)
+    clear_user_state(user_id)
+    send_message(chat_id, "Регистрация завершена. Ваш отклик отправлен.")
     return True
 
 

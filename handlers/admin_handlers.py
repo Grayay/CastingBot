@@ -10,7 +10,11 @@ from handlers.casting_handlers import (
     start_view_responses,
 )
 from handlers.model_handlers import handle_model_flow, start_add_model
-from handlers.response_handlers import handle_response_comment_flow, handle_start_response_payload
+from handlers.response_handlers import (
+    handle_first_time_registration_flow,
+    handle_response_comment_flow,
+    handle_start_response_payload,
+)
 from services.telegram_api import send_message
 from state import clear_user_state
 
@@ -30,6 +34,9 @@ def handle_message(update):
         username = "@" + username
 
     if handle_response_comment_flow(chat_id, user_id, message):
+        return
+
+    if handle_first_time_registration_flow(chat_id, user_id, message):
         return
 
     if text.startswith("/start"):

@@ -65,6 +65,46 @@ def create_model(full_name, telegram_username, added_by_admin_id):
         return False, f"DB ERROR: {str(e)}"
 
 
+def _build_fallback_username(telegram_id):
+    return f"@tg_{telegram_id}"
+
+
+def create_or_get_self_registered_model(full_name, telegram_id, username):
+    existing = find_model_for_user(telegram_id, username)
+    if existing:
+        return existing, False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    normalized_username = normalize_username(username) or _build_fallback_username(telegram_id)
+    admin_db_id = get_or_create_admin_db_id(telegram_id)
+
+    try:
+        cursor.execute(
+            """
+            INSERT INTO models (
+                full_name,
+                telegram_username,
+                telegram_id,
+                added_by_admin_id
+            )
+            VALUES (%s, %s, %s, %s)
+            RETURNING *
+            """,
+            (full_name.strip(), normalized_username, telegram_id, admin_db_id),
+        )
+        created = cursor.fetchone()
+        conn.commit()
+        return created, True
+    except IntegrityError:
+        conn.rollback()
+        existing_after_conflict = find_model_for_user(telegram_id, username)
+        if existing_after_conflict:
+            return existing_after_conflict, False
+        return None, False
+
+
 def get_model_by_username(username):
     conn = get_connection()
     cursor = conn.cursor()

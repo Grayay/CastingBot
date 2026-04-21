@@ -4,7 +4,8 @@ from services.casting_service import (
 )
 from handlers.response_handlers import start_response_comment_flow
 from services.model_service import find_model_for_user, update_model_telegram_id
-from services.telegram_api import answer_callback
+from services.telegram_api import answer_callback, send_message
+from state import clear_user_state, set_user_state
 
 
 def handle_callback(update):
@@ -34,11 +35,25 @@ def handle_callback(update):
     model = find_model_for_user(user_id, username)
 
     if not model:
-        answer_callback(
-            callback_id,
-            "Вас нет в базе, напишите администратору.",
-            show_alert=True,
+        set_user_state(
+            user_id,
+            {
+                "flow": "first_time_registration",
+                "step": "await_full_name",
+                "casting_id": casting["id"],
+                "username": username,
+            },
         )
+        dm_result = send_message(user_id, "Вы впервые откликаетесь. Введите ваше ФИО одним сообщением.")
+        if not dm_result.get("ok"):
+            clear_user_state(user_id)
+            answer_callback(
+                callback_id,
+                "Не удалось написать вам в личные сообщения. Откройте чат с ботом и нажмите /start.",
+                show_alert=True,
+            )
+            return
+        answer_callback(callback_id, "Проверьте личные сообщения для регистрации.", show_alert=False)
         return
 
     if model["telegram_id"] is None:
