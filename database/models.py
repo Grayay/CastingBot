@@ -29,6 +29,8 @@ def create_tables(connection):
         description TEXT NOT NULL,
         admin_id BIGINT NOT NULL,
         responsible_admin_name TEXT,
+        responsible_admin_username TEXT,
+        responsible_admin_full_name TEXT,
         message_id BIGINT NOT NULL,
         channel_id BIGINT NOT NULL,
         photo_file_id TEXT,
@@ -41,6 +43,16 @@ def create_tables(connection):
     cursor.execute("""
     ALTER TABLE castings
     ADD COLUMN IF NOT EXISTS responsible_admin_name TEXT
+    """)
+
+    cursor.execute("""
+    ALTER TABLE castings
+    ADD COLUMN IF NOT EXISTS responsible_admin_username TEXT
+    """)
+
+    cursor.execute("""
+    ALTER TABLE castings
+    ADD COLUMN IF NOT EXISTS responsible_admin_full_name TEXT
     """)
 
     cursor.execute("""

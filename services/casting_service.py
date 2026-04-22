@@ -8,6 +8,8 @@ def create_casting(
     message_id,
     channel_id,
     responsible_admin_name=None,
+    responsible_admin_username=None,
+    responsible_admin_full_name=None,
     photo_file_id=None,
 ):
     conn = get_connection()
@@ -20,11 +22,13 @@ def create_casting(
             description,
             admin_id,
             responsible_admin_name,
+            responsible_admin_username,
+            responsible_admin_full_name,
             message_id,
             channel_id,
             photo_file_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
         (
@@ -32,6 +36,8 @@ def create_casting(
             description.strip(),
             admin_id,
             responsible_admin_name,
+            responsible_admin_username,
+            responsible_admin_full_name,
             message_id,
             channel_id,
             photo_file_id,
@@ -105,7 +111,9 @@ def get_responsible_bookers_for_brand_title(title):
         """
         SELECT DISTINCT
             c.admin_id,
-            c.responsible_admin_name
+            c.responsible_admin_name,
+            c.responsible_admin_username,
+            c.responsible_admin_full_name
         FROM castings c
         WHERE c.is_deleted = FALSE
           AND c.title = %s

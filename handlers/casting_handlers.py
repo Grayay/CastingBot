@@ -124,16 +124,22 @@ def _build_responses_inline_keyboard(channel_id, message_id):
     }
 
 
-def _build_admin_display_name(user):
+def _build_admin_identity(user):
     first_name = (user.get("first_name") or "").strip()
     last_name = (user.get("last_name") or "").strip()
     full_name = f"{first_name} {last_name}".strip()
     username = (user.get("username") or "").strip()
-    if full_name:
-        return full_name
-    if username:
-        return f"@{username}"
-    return str(user.get("id"))
+    username_with_at = f"@{username}" if username else None
+
+    # Keep backward compatibility with old field:
+    # save username there first so old readers still show readable value.
+    legacy_name = username_with_at or full_name or None
+
+    return {
+        "legacy_name": legacy_name,
+        "username": username_with_at,
+        "full_name": full_name or None,
+    }
 
 
 def _format_responsible_bookers_for_brand(casting):
@@ -141,14 +147,23 @@ def _format_responsible_bookers_for_brand(casting):
     bookers = get_responsible_bookers_for_brand_title(title)
 
     def _human_booker_name(item):
-        name = (item.get("responsible_admin_name") or "").strip()
-        if not name:
-            return "Букер"
-        return name
+        username = (item.get("responsible_admin_username") or "").strip()
+        if username:
+            return username
+
+        full_name = (item.get("responsible_admin_full_name") or "").strip()
+        if full_name:
+            return full_name
+
+        legacy_name = (item.get("responsible_admin_name") or "").strip()
+        if legacy_name:
+            return legacy_name
+
+        return "Ответственный не указан"
 
     lines = []
     if not bookers:
-        lines.append(f"{title} — Букер")
+        lines.append(f"{title} — Ответственный не указан")
         return "\n".join(lines)
 
     for item in bookers:
@@ -305,13 +320,17 @@ def handle_casting_flow(chat_id, user_id, message):
 
         message_id = result["result"]["message_id"]
 
+        admin_identity = _build_admin_identity(message["from"])
+
         create_casting(
             title=title,
             description=description,
             admin_id=user_id,
             message_id=message_id,
             channel_id=channel_id,
-            responsible_admin_name=_build_admin_display_name(message["from"]),
+            responsible_admin_name=admin_identity["legacy_name"],
+            responsible_admin_username=admin_identity["username"],
+            responsible_admin_full_name=admin_identity["full_name"],
             photo_file_id=photo_file_id,
         )
 
