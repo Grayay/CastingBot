@@ -7,6 +7,7 @@ from handlers.casting_handlers import (
     start_create_casting,
     start_close_casting,
     start_delete_casting,
+    start_view_responsible_booker,
     start_view_responses,
 )
 from handlers.model_handlers import handle_model_flow, start_add_model
@@ -70,6 +71,10 @@ def handle_message(update):
         _interrupt_and_start(chat_id, user_id, start_view_responses)
         return
 
+    if text == "Ответственный букер":
+        _interrupt_and_start(chat_id, user_id, start_view_responsible_booker)
+        return
+
     if text == "Закрыть кастинг":
         _interrupt_and_start(chat_id, user_id, start_close_casting)
         return
@@ -90,7 +95,7 @@ def handle_message(update):
     if handle_model_flow(chat_id, user_id, text):
         return
 
-    if handle_casting_flow(chat_id, user_id, text):
+    if handle_casting_flow(chat_id, user_id, message):
         return
 
     if handle_select_casting_action(chat_id, user_id, text):

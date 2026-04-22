@@ -6,11 +6,18 @@ from services.casting_service import (
     close_casting,
     create_casting,
     delete_casting,
+    get_all_castings,
     get_casting_by_id_for_admin,
     get_castings_by_admin,
+    get_responsible_bookers_for_brand_title,
     get_responses_for_casting,
 )
-from services.telegram_api import edit_message_reply_markup, send_channel_message, send_message
+from services.telegram_api import (
+    edit_message_reply_markup,
+    send_channel_message,
+    send_channel_photo,
+    send_message,
+)
 from state import clear_user_state, get_user_state, set_user_state
 
 
@@ -19,6 +26,7 @@ def build_main_menu():
         "keyboard": [
             [{"text": "Создать кастинг"}],
             [{"text": "Посмотреть отклики"}],
+            [{"text": "Ответственный букер"}],
             [{"text": "Закрыть кастинг"}],
             [{"text": "Удалить кастинг"}],
             [{"text": "Добавить модель"}],
@@ -87,6 +95,61 @@ def _get_channel_by_button_text(text):
     return None
 
 
+def _build_add_image_keyboard():
+    return {
+        "keyboard": [
+            [{"text": "Добавить изображение"}],
+            [{"text": "Пропустить"}],
+        ],
+        "resize_keyboard": True,
+    }
+
+
+def _build_responses_inline_keyboard(channel_id, message_id):
+    payload = build_respond_payload(channel_id, message_id)
+    response_url = f"https://t.me/{BOT_USERNAME}?start={payload}"
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "Откликнуться",
+                    "url": response_url,
+                }
+            ]
+        ]
+    }
+
+
+def _build_admin_display_name(user):
+    first_name = (user.get("first_name") or "").strip()
+    last_name = (user.get("last_name") or "").strip()
+    full_name = f"{first_name} {last_name}".strip()
+    username = (user.get("username") or "").strip()
+    if full_name:
+        return full_name
+    if username:
+        return f"@{username}"
+    return str(user.get("id"))
+
+
+def _format_responsible_bookers_for_brand(casting):
+    title = casting["title"]
+    bookers = get_responsible_bookers_for_brand_title(title)
+
+    lines = [f"Кастинг: «{title}»", "Ответственные букеры по этому бренду:"]
+    if not bookers:
+        lines.append(f"- ID {casting['admin_id']}")
+        return "\n".join(lines)
+
+    for item in bookers:
+        display_name = (item.get("responsible_admin_name") or "").strip()
+        if display_name:
+            lines.append(f"- {display_name} (ID {item['admin_id']})")
+        else:
+            lines.append(f"- ID {item['admin_id']}")
+    return "\n".join(lines)
+
+
 def start_create_casting(chat_id, user_id):
     set_user_state(
         user_id,
@@ -98,34 +161,101 @@ def start_create_casting(chat_id, user_id):
     send_message(chat_id, "Введите название кастинга.")
 
 
-def handle_casting_flow(chat_id, user_id, text):
+def handle_casting_flow(chat_id, user_id, message):
     state = get_user_state(user_id)
 
     if state.get("flow") != "create_casting":
         return False
 
     step = state.get("step")
+    text = (message.get("text") or "").strip()
+    photos = message.get("photo") or []
 
     if step == "title":
+        if not text:
+            send_message(chat_id, "Введите название кастинга текстом.")
+            return True
         set_user_state(
             user_id,
             {
                 "flow": "create_casting",
                 "step": "description",
-                "title": text.strip(),
+                "title": text,
             },
         )
         send_message(chat_id, "Введите текст кастинга.")
         return True
 
     if step == "description":
+        if not text:
+            send_message(chat_id, "Введите текст кастинга текстом.")
+            return True
+        set_user_state(
+            user_id,
+            {
+                "flow": "create_casting",
+                "step": "add_image_choice",
+                "title": state["title"],
+                "description": text,
+            },
+        )
+        send_message(chat_id, "Добавить изображение к кастингу?", reply_markup=_build_add_image_keyboard())
+        return True
+
+    if step == "add_image_choice":
+        if text == "Добавить изображение":
+            set_user_state(
+                user_id,
+                {
+                    "flow": "create_casting",
+                    "step": "image",
+                    "title": state["title"],
+                    "description": state["description"],
+                },
+            )
+            send_message(chat_id, "Отправьте изображение одним сообщением.")
+            return True
+
+        if text == "Пропустить":
+            set_user_state(
+                user_id,
+                {
+                    "flow": "create_casting",
+                    "step": "channel",
+                    "title": state["title"],
+                    "description": state["description"],
+                    "photo_file_id": None,
+                },
+            )
+            send_message(
+                chat_id,
+                "Выберите канал для публикации кастинга.",
+                reply_markup=_build_channel_selection_keyboard(),
+            )
+            return True
+
+        send_message(chat_id, "Выберите вариант кнопкой.", reply_markup=_build_add_image_keyboard())
+        return True
+
+    if step == "image":
+        if not photos:
+            send_message(chat_id, "Отправьте изображение или нажмите «Назад» для отмены.")
+            return True
+
+        largest_photo = photos[-1]
+        file_id = largest_photo.get("file_id")
+        if not file_id:
+            send_message(chat_id, "Не удалось получить изображение. Отправьте другое фото.")
+            return True
+
         set_user_state(
             user_id,
             {
                 "flow": "create_casting",
                 "step": "channel",
                 "title": state["title"],
-                "description": text.strip(),
+                "description": state["description"],
+                "photo_file_id": file_id,
             },
         )
         send_message(
@@ -138,6 +268,7 @@ def handle_casting_flow(chat_id, user_id, text):
     if step == "channel":
         title = state["title"]
         description = state["description"]
+        photo_file_id = state.get("photo_file_id")
         selected_channel = _get_channel_by_button_text(text)
         if not selected_channel:
             send_message(
@@ -149,11 +280,17 @@ def handle_casting_flow(chat_id, user_id, text):
 
         channel_id = selected_channel["id"]
         post_text = f"📢 {title}\n\n{description}"
-
-        result = send_channel_message(
-            channel_id,
-            post_text,
-        )
+        if photo_file_id:
+            result = send_channel_photo(
+                channel_id=channel_id,
+                photo_file_id=photo_file_id,
+                caption=post_text,
+            )
+        else:
+            result = send_channel_message(
+                channel_id,
+                post_text,
+            )
 
         if not result.get("ok"):
             clear_user_state(user_id)
@@ -168,6 +305,8 @@ def handle_casting_flow(chat_id, user_id, text):
             admin_id=user_id,
             message_id=message_id,
             channel_id=channel_id,
+            responsible_admin_name=_build_admin_display_name(message["from"]),
+            photo_file_id=photo_file_id,
         )
 
         if not BOT_USERNAME:
@@ -175,18 +314,7 @@ def handle_casting_flow(chat_id, user_id, text):
             send_message(chat_id, "Кастинг опубликован, но не настроен BOT_USERNAME для кнопки отклика.")
             return True
 
-        payload = build_respond_payload(channel_id, message_id)
-        response_url = f"https://t.me/{BOT_USERNAME}?start={payload}"
-        reply_markup = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "Откликнуться",
-                        "url": response_url,
-                    }
-                ]
-            ]
-        }
+        reply_markup = _build_responses_inline_keyboard(channel_id, message_id)
         edit_result = edit_message_reply_markup(channel_id, message_id, reply_markup)
         if not edit_result.get("ok"):
             clear_user_state(user_id)
@@ -253,6 +381,27 @@ def start_close_casting(chat_id, admin_id):
     )
 
 
+def start_view_responsible_booker(chat_id, admin_id):
+    castings = get_all_castings()
+
+    if not castings:
+        send_message(chat_id, "Нет кастингов для просмотра.", reply_markup=build_main_menu())
+        return
+
+    send_message(
+        chat_id,
+        "Выберите кастинг, чтобы увидеть ответственного букера.",
+        reply_markup=build_castings_list_keyboard(castings),
+    )
+    set_user_state(
+        admin_id,
+        {
+            "flow": "select_casting_action",
+            "action": "view_responsible_booker",
+        },
+    )
+
+
 def start_delete_casting(chat_id, admin_id):
     castings = get_castings_by_admin(admin_id)
 
@@ -291,9 +440,17 @@ def handle_select_casting_action(chat_id, admin_id, text):
         send_message(chat_id, "Выберите кастинг кнопкой из списка.")
         return True
 
-    casting = get_casting_by_id_for_admin(casting_id, admin_id)
+    if action == "view_responsible_booker":
+        casting = next((item for item in get_all_castings() if item["id"] == casting_id), None)
+    else:
+        casting = get_casting_by_id_for_admin(casting_id, admin_id)
+
     if not casting:
         send_message(chat_id, "Кастинг не найден.")
+        return True
+
+    if action == "view_responsible_booker":
+        send_message(chat_id, _format_responsible_bookers_for_brand(casting))
         return True
 
     if action == "view_responses":

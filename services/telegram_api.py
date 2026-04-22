@@ -76,6 +76,20 @@ def send_channel_message(channel_id, text, reply_markup=None):
     return response.json()
 
 
+def send_channel_photo(channel_id, photo_file_id, caption, reply_markup=None):
+    payload = {
+        "chat_id": channel_id,
+        "photo": photo_file_id,
+        "caption": caption,
+    }
+
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+
+    response = requests.post(f"{BASE_URL}/sendPhoto", json=payload, timeout=20)
+    return response.json()
+
+
 def answer_callback(callback_query_id, text, show_alert=False):
     payload = {
         "callback_query_id": callback_query_id,

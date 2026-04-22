@@ -1,7 +1,15 @@
 from database.db import get_connection
 
 
-def create_casting(title, description, admin_id, message_id, channel_id):
+def create_casting(
+    title,
+    description,
+    admin_id,
+    message_id,
+    channel_id,
+    responsible_admin_name=None,
+    photo_file_id=None,
+):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -11,13 +19,23 @@ def create_casting(title, description, admin_id, message_id, channel_id):
             title,
             description,
             admin_id,
+            responsible_admin_name,
             message_id,
-            channel_id
+            channel_id,
+            photo_file_id
         )
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
-        (title.strip(), description.strip(), admin_id, message_id, channel_id),
+        (
+            title.strip(),
+            description.strip(),
+            admin_id,
+            responsible_admin_name,
+            message_id,
+            channel_id,
+            photo_file_id,
+        ),
     )
     created_casting = cursor.fetchone()
     conn.commit()
@@ -56,6 +74,44 @@ def get_castings_by_admin(admin_id):
         ORDER BY c.created_at DESC, c.id DESC
         """,
         (admin_id,),
+    )
+    return cursor.fetchall()
+
+
+def get_all_castings():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            c.*,
+            COUNT(r.id) AS responses_count
+        FROM castings c
+        LEFT JOIN responses r ON r.casting_id = c.id
+        WHERE c.is_deleted = FALSE
+        GROUP BY c.id
+        ORDER BY c.created_at DESC, c.id DESC
+        """
+    )
+    return cursor.fetchall()
+
+
+def get_responsible_bookers_for_brand_title(title):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT DISTINCT
+            c.admin_id,
+            c.responsible_admin_name
+        FROM castings c
+        WHERE c.is_deleted = FALSE
+          AND c.title = %s
+        ORDER BY c.admin_id ASC
+        """,
+        (title,),
     )
     return cursor.fetchall()
 

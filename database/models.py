@@ -28,12 +28,24 @@ def create_tables(connection):
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         admin_id BIGINT NOT NULL,
+        responsible_admin_name TEXT,
         message_id BIGINT NOT NULL,
         channel_id BIGINT NOT NULL,
+        photo_file_id TEXT,
         is_closed BOOLEAN NOT NULL DEFAULT FALSE,
         is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+    """)
+
+    cursor.execute("""
+    ALTER TABLE castings
+    ADD COLUMN IF NOT EXISTS responsible_admin_name TEXT
+    """)
+
+    cursor.execute("""
+    ALTER TABLE castings
+    ADD COLUMN IF NOT EXISTS photo_file_id TEXT
     """)
 
     cursor.execute("""
