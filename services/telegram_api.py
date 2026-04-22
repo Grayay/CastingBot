@@ -50,6 +50,23 @@ def get_updates(offset=None):
         }
 
 
+def _safe_post_json(method, payload, timeout=20):
+    try:
+        response = requests.post(f"{BASE_URL}/{method}", json=payload, timeout=timeout)
+    except Exception as e:
+        return {"ok": False, "error": f"REQUEST_ERROR: {e}"}
+
+    try:
+        return response.json()
+    except Exception:
+        return {
+            "ok": False,
+            "error": "NON_JSON_RESPONSE",
+            "status_code": response.status_code,
+            "text": response.text[:1000],
+        }
+
+
 def send_message(chat_id, text, reply_markup=None):
     payload = {
         "chat_id": chat_id,
@@ -59,8 +76,7 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup is not None:
         payload["reply_markup"] = reply_markup
 
-    response = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=20)
-    return response.json()
+    return _safe_post_json("sendMessage", payload, timeout=20)
 
 
 def send_channel_message(channel_id, text, reply_markup=None):
@@ -72,8 +88,7 @@ def send_channel_message(channel_id, text, reply_markup=None):
     if reply_markup is not None:
         payload["reply_markup"] = reply_markup
 
-    response = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=20)
-    return response.json()
+    return _safe_post_json("sendMessage", payload, timeout=20)
 
 
 def send_channel_photo(channel_id, photo_file_id, caption, reply_markup=None):
@@ -86,8 +101,7 @@ def send_channel_photo(channel_id, photo_file_id, caption, reply_markup=None):
     if reply_markup is not None:
         payload["reply_markup"] = reply_markup
 
-    response = requests.post(f"{BASE_URL}/sendPhoto", json=payload, timeout=20)
-    return response.json()
+    return _safe_post_json("sendPhoto", payload, timeout=20)
 
 
 def answer_callback(callback_query_id, text, show_alert=False):
@@ -97,12 +111,7 @@ def answer_callback(callback_query_id, text, show_alert=False):
         "show_alert": show_alert,
     }
 
-    response = requests.post(
-        f"{BASE_URL}/answerCallbackQuery",
-        json=payload,
-        timeout=20,
-    )
-    return response.json()
+    return _safe_post_json("answerCallbackQuery", payload, timeout=20)
 
 
 def edit_message_reply_markup(chat_id, message_id, reply_markup):
@@ -111,9 +120,4 @@ def edit_message_reply_markup(chat_id, message_id, reply_markup):
         "message_id": message_id,
         "reply_markup": reply_markup,
     }
-    response = requests.post(
-        f"{BASE_URL}/editMessageReplyMarkup",
-        json=payload,
-        timeout=20,
-    )
-    return response.json()
+    return _safe_post_json("editMessageReplyMarkup", payload, timeout=20)

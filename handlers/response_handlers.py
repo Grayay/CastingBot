@@ -1,4 +1,5 @@
 import re
+from psycopg import IntegrityError
 
 from services.casting_service import get_casting_by_message, response_exists, save_response
 from services.model_service import (
@@ -145,7 +146,17 @@ def handle_first_time_registration_flow(chat_id, user_id, message):
         send_message(chat_id, "Вы уже откликались на этот кастинг.")
         return True
 
-    save_response(casting_id, model["id"], comment=None)
+    try:
+        save_response(casting_id, model["id"], comment=None)
+    except IntegrityError:
+        clear_user_state(user_id)
+        send_message(chat_id, "Вы уже откликались на этот кастинг.")
+        return True
+    except Exception:
+        clear_user_state(user_id)
+        send_message(chat_id, "Не удалось отправить отклик. Попробуйте снова по ссылке отклика.")
+        return True
+
     clear_user_state(user_id)
     send_message(chat_id, "Регистрация завершена. Ваш отклик отправлен.")
     return True
@@ -183,7 +194,21 @@ def handle_response_comment_flow(chat_id, user_id, message):
         send_message(chat_id, "Вы уже откликались на этот кастинг.", reply_markup=_remove_keyboard())
         return True
 
-    save_response(casting_id, model_id, comment=comment)
+    try:
+        save_response(casting_id, model_id, comment=comment)
+    except IntegrityError:
+        clear_user_state(user_id)
+        send_message(chat_id, "Вы уже откликались на этот кастинг.", reply_markup=_remove_keyboard())
+        return True
+    except Exception:
+        send_message(
+            chat_id,
+            "Не удалось отправить отклик. Попробуйте снова по ссылке отклика.",
+            reply_markup=_remove_keyboard(),
+        )
+        clear_user_state(user_id)
+        return True
+
     clear_user_state(user_id)
     send_message(chat_id, "Отклик отправлен.", reply_markup=_remove_keyboard())
     return True

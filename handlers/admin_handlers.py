@@ -17,7 +17,7 @@ from handlers.response_handlers import (
     handle_start_response_payload,
 )
 from services.telegram_api import send_message
-from state import clear_user_state
+from state import clear_expired_user_state, clear_user_state
 
 
 def _interrupt_and_start(chat_id, user_id, starter):
@@ -34,13 +34,8 @@ def handle_message(update):
     if username:
         username = "@" + username
 
-    if handle_response_comment_flow(chat_id, user_id, message):
-        return
-
-    if handle_first_time_registration_flow(chat_id, user_id, message):
-        return
-
     if text.startswith("/start"):
+        clear_user_state(user_id)
         parts = text.split(maxsplit=1)
         payload = parts[1].strip() if len(parts) > 1 else None
         if payload:
@@ -48,7 +43,6 @@ def handle_message(update):
                 return
 
         if user_id in ADMINS:
-            clear_user_state(user_id)
             send_message(
                 chat_id,
                 "Добро пожаловать в систему управления кастингами.",
@@ -59,8 +53,21 @@ def handle_message(update):
         send_message(chat_id, "Откройте ссылку отклика из поста кастинга.")
         return
 
+    if clear_expired_user_state(user_id):
+        send_message(
+            chat_id,
+            "Сессия истекла. Откройте ссылку отклика из поста кастинга или начните действие заново из меню.",
+        )
+        return
+
+    if handle_response_comment_flow(chat_id, user_id, message):
+        return
+
+    if handle_first_time_registration_flow(chat_id, user_id, message):
+        return
+
     if user_id not in ADMINS:
-        send_message(chat_id, "У вас нет доступа к этому боту.")
+        send_message(chat_id, "Откройте ссылку отклика из поста кастинга или нажмите /start по этой ссылке.")
         return
 
     if text == "Создать кастинг":

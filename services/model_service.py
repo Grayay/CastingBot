@@ -62,6 +62,7 @@ def create_model(full_name, telegram_username, added_by_admin_id):
         conn.commit()
         return True, None
     except IntegrityError as e:
+        conn.rollback()
         return False, f"DB ERROR: {str(e)}"
 
 
