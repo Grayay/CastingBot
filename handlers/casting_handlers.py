@@ -26,24 +26,28 @@ def build_main_menu():
         "keyboard": [
             [{"text": "Создать кастинг"}],
             [{"text": "Посмотреть отклики"}],
-            [{"text": "Ответственный букер"}],
             [{"text": "Закрыть кастинг"}],
             [{"text": "Удалить кастинг"}],
             [{"text": "Добавить модель"}],
+            [{"text": "Ответственный букер"}],
         ],
         "resize_keyboard": True,
     }
 
 
-def build_castings_list_keyboard(castings, back_button_text="Назад"):
+def build_castings_list_keyboard(castings, back_button_text="Назад", back_button_first=False):
     keyboard = []
+
+    if back_button_first:
+        keyboard.append([{"text": back_button_text}])
 
     for casting in castings:
         title = casting["title"]
         short_title = title[:28] + "..." if len(title) > 28 else title
         keyboard.append([{"text": f"#{casting['id']} {short_title}"}])
 
-    keyboard.append([{"text": back_button_text}])
+    if not back_button_first:
+        keyboard.append([{"text": back_button_text}])
 
     return {
         "keyboard": keyboard,
@@ -136,17 +140,19 @@ def _format_responsible_bookers_for_brand(casting):
     title = casting["title"]
     bookers = get_responsible_bookers_for_brand_title(title)
 
-    lines = [f"Кастинг: «{title}»", "Ответственные букеры по этому бренду:"]
+    def _human_booker_name(item):
+        name = (item.get("responsible_admin_name") or "").strip()
+        if not name:
+            return "Букер"
+        return name
+
+    lines = []
     if not bookers:
-        lines.append(f"- ID {casting['admin_id']}")
+        lines.append(f"{title} — Букер")
         return "\n".join(lines)
 
     for item in bookers:
-        display_name = (item.get("responsible_admin_name") or "").strip()
-        if display_name:
-            lines.append(f"- {display_name} (ID {item['admin_id']})")
-        else:
-            lines.append(f"- ID {item['admin_id']}")
+        lines.append(f"{title} — {_human_booker_name(item)}")
     return "\n".join(lines)
 
 
@@ -391,7 +397,7 @@ def start_view_responsible_booker(chat_id, admin_id):
     send_message(
         chat_id,
         "Выберите кастинг, чтобы увидеть ответственного букера.",
-        reply_markup=build_castings_list_keyboard(castings),
+        reply_markup=build_castings_list_keyboard(castings, back_button_first=True),
     )
     set_user_state(
         admin_id,
