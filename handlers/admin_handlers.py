@@ -38,6 +38,15 @@ def handle_message(update):
         clear_user_state(user_id)
         parts = text.split(maxsplit=1)
         payload = parts[1].strip() if len(parts) > 1 else None
+        print(
+            "Start command:",
+            {
+                "user_id": user_id,
+                "username": username,
+                "raw_text": text,
+                "payload": payload,
+            },
+        )
         if payload:
             if handle_start_response_payload(chat_id, user_id, username, payload):
                 return

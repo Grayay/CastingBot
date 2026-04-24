@@ -54,16 +54,19 @@ def _safe_post_json(method, payload, timeout=20):
     try:
         response = requests.post(f"{BASE_URL}/{method}", json=payload, timeout=timeout)
     except Exception as e:
-        return {"ok": False, "error": f"REQUEST_ERROR: {e}"}
+        return {"ok": False, "error": f"REQUEST_ERROR: {e}", "_request_status": "failure_unknown"}
 
     try:
-        return response.json()
+        parsed = response.json()
+        parsed["_request_status"] = "success" if parsed.get("ok") else "failure_certain"
+        return parsed
     except Exception:
         return {
             "ok": False,
             "error": "NON_JSON_RESPONSE",
             "status_code": response.status_code,
             "text": response.text[:1000],
+            "_request_status": "failure_unknown",
         }
 
 

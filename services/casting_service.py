@@ -49,6 +49,85 @@ def create_casting(
     return created_casting["id"]
 
 
+def create_casting_draft(
+    title,
+    description,
+    admin_id,
+    channel_id,
+    responsible_admin_name=None,
+    responsible_admin_username=None,
+    responsible_admin_full_name=None,
+    photo_file_id=None,
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO castings (
+            title,
+            description,
+            admin_id,
+            responsible_admin_name,
+            responsible_admin_username,
+            responsible_admin_full_name,
+            message_id,
+            channel_id,
+            photo_file_id
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            title.strip(),
+            description.strip(),
+            admin_id,
+            responsible_admin_name,
+            responsible_admin_username,
+            responsible_admin_full_name,
+            0,
+            channel_id,
+            photo_file_id,
+        ),
+    )
+    created_casting = cursor.fetchone()
+    conn.commit()
+
+    return created_casting["id"]
+
+
+def attach_published_message(casting_id, message_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE castings
+        SET message_id = %s
+        WHERE id = %s
+        """,
+        (message_id, casting_id),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def mark_casting_deleted_by_id(casting_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE castings
+        SET is_deleted = TRUE
+        WHERE id = %s
+        """,
+        (casting_id,),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def get_casting_by_message(channel_id, message_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -60,6 +139,21 @@ def get_casting_by_message(channel_id, message_id):
         WHERE channel_id = %s AND message_id = %s AND is_deleted = FALSE
         """,
         (channel_id, message_id),
+    )
+    return cursor.fetchone()
+
+
+def get_casting_by_id(casting_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM castings
+        WHERE id = %s AND is_deleted = FALSE
+        """,
+        (casting_id,),
     )
     return cursor.fetchone()
 
