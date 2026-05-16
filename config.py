@@ -28,11 +28,36 @@ def _parse_int(value, default=None):
     return int(str(value).strip())
 
 
-def _parse_admins(value, default):
+def parse_id_list(value):
     if value is None or str(value).strip() == "":
-        return default
-    parts = [p.strip() for p in str(value).split(",")]
-    return [int(p) for p in parts if p]
+        return []
+
+    ids = []
+    seen = set()
+    for part in str(value).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            parsed_id = int(part)
+        except ValueError:
+            continue
+        if parsed_id not in seen:
+            ids.append(parsed_id)
+            seen.add(parsed_id)
+    return ids
+
+
+def _parse_admins(value, default):
+    parsed = parse_id_list(value)
+    return parsed if parsed else default
+
+
+def _legacy_booker_ids_env():
+    booker_ids = os.getenv("BOOKER_IDS")
+    if booker_ids is not None:
+        return booker_ids
+    return os.getenv("ADMINS")
 
 
 def _build_casting_channels(default_channel_id):
@@ -61,5 +86,12 @@ BOT_USERNAME = (os.getenv("BOT_USERNAME") or "").strip().lstrip("@")
 CHANNEL_ID = _parse_int(os.getenv("CHANNEL_ID"), default=-1003677854141)
 CASTING_CHANNELS = _build_casting_channels(CHANNEL_ID)
 
-# Telegram ID администраторов (comma-separated in env: "123,456")
-ADMINS = _parse_admins(os.getenv("ADMINS"), default=[2081888103, 1640758237, 2081888103])
+# Chief bookers stay env-based permanently.
+CHIEF_BOOKER_IDS = parse_id_list(os.getenv("CHIEF_BOOKER_IDS"))
+
+# BOOKER_IDS is bootstrap-only. ADMINS is accepted as a legacy seed source for
+# existing deployments that used the old name before the access-control table.
+BOOKER_IDS = parse_id_list(_legacy_booker_ids_env())
+
+# Legacy constant kept for old imports/tests only. Do not use for live access.
+ADMINS = parse_id_list(os.getenv("ADMINS"))

@@ -1,4 +1,4 @@
-from config import ADMINS
+from handlers.booker_handlers import handle_booker_management_flow
 from handlers.casting_handlers import (
     build_main_menu,
     handle_casting_flow,
@@ -17,6 +17,7 @@ from handlers.response_handlers import (
     handle_start_response_payload,
 )
 from services.telegram_api import send_message
+from services.access_control import is_authorized_booker
 from state import clear_expired_user_state, clear_user_state
 
 
@@ -51,11 +52,11 @@ def handle_message(update):
             if handle_start_response_payload(chat_id, user_id, username, payload):
                 return
 
-        if user_id in ADMINS:
+        if is_authorized_booker(user_id):
             send_message(
                 chat_id,
                 "Добро пожаловать в систему управления кастингами.",
-                reply_markup=build_main_menu(),
+                reply_markup=build_main_menu(user_id),
             )
             return
 
@@ -75,8 +76,11 @@ def handle_message(update):
     if handle_first_time_registration_flow(chat_id, user_id, message):
         return
 
-    if user_id not in ADMINS:
+    if not is_authorized_booker(user_id):
         send_message(chat_id, "Откройте ссылку отклика из поста кастинга или нажмите /start по этой ссылке.")
+        return
+
+    if handle_booker_management_flow(chat_id, user_id, text):
         return
 
     if text == "Создать кастинг":
@@ -105,7 +109,7 @@ def handle_message(update):
 
     if text == "Назад":
         clear_user_state(user_id)
-        send_message(chat_id, "Главное меню.", reply_markup=build_main_menu())
+        send_message(chat_id, "Главное меню.", reply_markup=build_main_menu(user_id))
         return
 
     if handle_model_flow(chat_id, user_id, text):
@@ -123,5 +127,5 @@ def handle_message(update):
     send_message(
         chat_id,
         "Используйте кнопки меню.",
-        reply_markup=build_main_menu(),
+        reply_markup=build_main_menu(user_id),
     )

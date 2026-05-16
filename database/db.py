@@ -5,6 +5,7 @@ from psycopg.rows import dict_row
 
 import config  # noqa: F401 - ensures .env is loaded
 from database.models import create_tables
+from services.access_control import bootstrap_access_control
 
 
 _connection = None
@@ -34,5 +35,6 @@ def get_connection():
     if _connection is None or _connection.closed:
         _connection = connect(**_build_connection_kwargs(), row_factory=dict_row)
         create_tables(_connection)
+        bootstrap_access_control(_connection)
 
     return _connection

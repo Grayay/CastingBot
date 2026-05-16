@@ -19,19 +19,25 @@ from services.telegram_api import (
     send_channel_photo,
     send_message,
 )
+from services.access_control import is_chief_booker
 from state import clear_user_state, get_user_state, set_user_state
 
 
-def build_main_menu():
+def build_main_menu(user_id=None):
+    keyboard = [
+        [{"text": "Создать кастинг"}],
+        [{"text": "Посмотреть отклики"}],
+        [{"text": "Закрыть кастинг"}],
+        [{"text": "Удалить кастинг"}],
+        [{"text": "Добавить модель"}],
+        [{"text": "Ответственный букер"}],
+    ]
+
+    if is_chief_booker(user_id):
+        keyboard.append([{"text": "👥 Управление букерами"}])
+
     return {
-        "keyboard": [
-            [{"text": "Создать кастинг"}],
-            [{"text": "Посмотреть отклики"}],
-            [{"text": "Закрыть кастинг"}],
-            [{"text": "Удалить кастинг"}],
-            [{"text": "Добавить модель"}],
-            [{"text": "Ответственный букер"}],
-        ],
+        "keyboard": keyboard,
         "resize_keyboard": True,
     }
 
@@ -393,7 +399,7 @@ def handle_casting_flow(chat_id, user_id, message):
             send_message(
                 chat_id,
                 "Кастинг опубликован, но возникла ошибка сохранения message_id в базе. Проверьте канал и обратитесь к разработчику.",
-                reply_markup=build_main_menu(),
+                reply_markup=build_main_menu(user_id),
             )
             return True
 
@@ -403,7 +409,7 @@ def handle_casting_flow(chat_id, user_id, message):
         )
 
         clear_user_state(user_id)
-        send_message(chat_id, "Кастинг опубликован.", reply_markup=build_main_menu())
+        send_message(chat_id, "Кастинг опубликован.", reply_markup=build_main_menu(user_id))
         return True
 
     return False
@@ -424,7 +430,7 @@ def start_view_responses(chat_id, admin_id):
     castings = get_castings_by_admin(admin_id)
 
     if not castings:
-        send_message(chat_id, "Нет кастингов для просмотра откликов.", reply_markup=build_main_menu())
+        send_message(chat_id, "Нет кастингов для просмотра откликов.", reply_markup=build_main_menu(admin_id))
         return
 
     send_message(
@@ -445,7 +451,7 @@ def start_close_casting(chat_id, admin_id):
     castings = _active_castings(get_castings_by_admin(admin_id))
 
     if not castings:
-        send_message(chat_id, "Нет активных кастингов для закрытия.", reply_markup=build_main_menu())
+        send_message(chat_id, "Нет активных кастингов для закрытия.", reply_markup=build_main_menu(admin_id))
         return
 
     send_message(
@@ -466,7 +472,7 @@ def start_view_responsible_booker(chat_id, admin_id):
     castings = get_all_castings()
 
     if not castings:
-        send_message(chat_id, "Нет кастингов для просмотра.", reply_markup=build_main_menu())
+        send_message(chat_id, "Нет кастингов для просмотра.", reply_markup=build_main_menu(admin_id))
         return
 
     send_message(
@@ -487,7 +493,7 @@ def start_delete_casting(chat_id, admin_id):
     castings = get_castings_by_admin(admin_id)
 
     if not castings:
-        send_message(chat_id, "У вас пока нет кастингов для удаления.", reply_markup=build_main_menu())
+        send_message(chat_id, "У вас пока нет кастингов для удаления.", reply_markup=build_main_menu(admin_id))
         return
 
     send_message(
@@ -512,7 +518,7 @@ def handle_select_casting_action(chat_id, admin_id, text):
 
     if text == "Назад":
         clear_user_state(admin_id)
-        send_message(chat_id, "Главное меню.", reply_markup=build_main_menu())
+        send_message(chat_id, "Главное меню.", reply_markup=build_main_menu(admin_id))
         return True
 
     action = state.get("action")
@@ -554,7 +560,7 @@ def handle_select_casting_action(chat_id, admin_id, text):
         if success:
             print(f"event=close_casting_success casting_id={casting_id} admin_id={admin_id}")
             clear_user_state(admin_id)
-            send_message(chat_id, f"Кастинг «{casting['title']}» закрыт.", reply_markup=build_main_menu())
+            send_message(chat_id, f"Кастинг «{casting['title']}» закрыт.", reply_markup=build_main_menu(admin_id))
         else:
             print(f"event=close_casting_failure casting_id={casting_id} admin_id={admin_id} reason=db_update_failed")
             send_message(chat_id, "Не удалось закрыть кастинг.")
@@ -566,14 +572,14 @@ def handle_select_casting_action(chat_id, admin_id, text):
         if success:
             print(f"event=delete_casting_success casting_id={casting_id} admin_id={admin_id}")
             clear_user_state(admin_id)
-            send_message(chat_id, f"Кастинг «{casting['title']}» удалён из списка.", reply_markup=build_main_menu())
+            send_message(chat_id, f"Кастинг «{casting['title']}» удалён из списка.", reply_markup=build_main_menu(admin_id))
         else:
             print(f"event=delete_casting_failure casting_id={casting_id} admin_id={admin_id} reason=db_update_failed")
             send_message(chat_id, "Не удалось удалить кастинг.")
         return True
 
     clear_user_state(admin_id)
-    send_message(chat_id, "Команда устарела. Повторите действие из меню.", reply_markup=build_main_menu())
+    send_message(chat_id, "Команда устарела. Повторите действие из меню.", reply_markup=build_main_menu(admin_id))
     return True
 
 
@@ -586,13 +592,13 @@ def handle_legacy_casting_management(chat_id, admin_id, text):
     casting_id = state.get("selected_casting_id")
     if not casting_id:
         clear_user_state(admin_id)
-        send_message(chat_id, "Сессия управления кастингом сброшена.", reply_markup=build_main_menu())
+        send_message(chat_id, "Сессия управления кастингом сброшена.", reply_markup=build_main_menu(admin_id))
         return True
 
     casting = get_casting_by_id_for_admin(casting_id, admin_id)
     if not casting:
         clear_user_state(admin_id)
-        send_message(chat_id, "Кастинг больше недоступен.", reply_markup=build_main_menu())
+        send_message(chat_id, "Кастинг больше недоступен.", reply_markup=build_main_menu(admin_id))
         return True
 
     if text == "Отклики":
@@ -618,7 +624,7 @@ def handle_legacy_casting_management(chat_id, admin_id, text):
 
         if success:
             print(f"event=close_casting_success casting_id={casting_id} admin_id={admin_id} source=legacy_manage")
-            send_message(chat_id, "Кастинг закрыт.", reply_markup=build_main_menu())
+            send_message(chat_id, "Кастинг закрыт.", reply_markup=build_main_menu(admin_id))
             clear_user_state(admin_id)
         else:
             print(
@@ -634,7 +640,7 @@ def handle_legacy_casting_management(chat_id, admin_id, text):
         if success:
             print(f"event=delete_casting_success casting_id={casting_id} admin_id={admin_id} source=legacy_manage")
             clear_user_state(admin_id)
-            send_message(chat_id, "Кастинг удалён из списка.", reply_markup=build_main_menu())
+            send_message(chat_id, "Кастинг удалён из списка.", reply_markup=build_main_menu(admin_id))
         else:
             print(
                 f"event=delete_casting_failure casting_id={casting_id} admin_id={admin_id} "
