@@ -7,7 +7,7 @@ from services.model_service import (
     find_model_for_user,
     update_model_telegram_id,
 )
-from services.telegram_api import send_message
+from services.telegram_api import get_chat_member, send_message
 from state import clear_user_state, get_user_state, set_user_state
 
 
@@ -28,6 +28,110 @@ def _skip_keyboard():
 
 def _remove_keyboard():
     return {"remove_keyboard": True}
+
+
+RESPONSE_CHANNEL_MEMBERS_ONLY_MESSAGE = (
+    "Response is available only to members of the channel where this casting was published."
+)
+ALLOWED_CHAT_MEMBER_STATUSES = {"member", "administrator", "creator"}
+
+
+def _casting_value(casting, key):
+    if casting is None:
+        return None
+    try:
+        if hasattr(casting, "get"):
+            return casting.get(key)
+        return casting[key]
+    except (KeyError, TypeError, IndexError):
+        return None
+
+
+def _telegram_api_error_reason(result):
+    if not isinstance(result, dict):
+        return "telegram_api_error:invalid_response"
+    return "telegram_api_error:" + str(
+        result.get("description") or result.get("error") or "unknown"
+    ).replace("\n", " ")[:300]
+
+
+def _member_result_allows_response(result):
+    if not isinstance(result, dict) or not result.get("ok"):
+        return False, _telegram_api_error_reason(result)
+
+    chat_member = result.get("result") or {}
+    status = chat_member.get("status")
+
+    if status in ALLOWED_CHAT_MEMBER_STATUSES:
+        return True, None
+    if status == "restricted" and chat_member.get("is_member") is True:
+        return True, None
+    if status == "restricted":
+        return False, "restricted_not_member"
+    return False, f"status_{status or 'missing'}"
+
+
+def _call_get_chat_member(bot, channel_id, user_id):
+    if bot is not None:
+        return bot.get_chat_member(channel_id, user_id)
+    return get_chat_member(channel_id, user_id)
+
+
+def is_user_channel_member(bot, channel_id, user_id):
+    try:
+        result = _call_get_chat_member(bot, channel_id, user_id)
+    except Exception:
+        return False
+
+    allowed, _ = _member_result_allows_response(result)
+    return allowed
+
+
+def _log_response_channel_access_denied(user_id, casting_id, channel_id, reason, source):
+    reason_text = str(reason).replace("\n", " ")[:300]
+    print(
+        f"event=response_channel_access_denied user_id={user_id} "
+        f"casting_id={casting_id} channel_id={channel_id} "
+        f"reason={reason_text} source={source}"
+    )
+
+
+def _verify_response_channel_access(casting, user_id, source, casting_id=None):
+    casting_id = _casting_value(casting, "id") or casting_id
+    channel_id = _casting_value(casting, "channel_id")
+
+    if not channel_id:
+        _log_response_channel_access_denied(
+            user_id=user_id,
+            casting_id=casting_id,
+            channel_id=channel_id,
+            reason="missing_channel_id",
+            source=source,
+        )
+        return False
+
+    try:
+        result = _call_get_chat_member(None, channel_id, user_id)
+    except Exception as error:
+        _log_response_channel_access_denied(
+            user_id=user_id,
+            casting_id=casting_id,
+            channel_id=channel_id,
+            reason=f"telegram_api_exception:{error}",
+            source=source,
+        )
+        return False
+
+    allowed, reason = _member_result_allows_response(result)
+    if not allowed:
+        _log_response_channel_access_denied(
+            user_id=user_id,
+            casting_id=casting_id,
+            channel_id=channel_id,
+            reason=reason,
+            source=source,
+        )
+    return allowed
 
 
 def build_respond_payload(casting_id=None, channel_id=None, message_id=None):
@@ -133,6 +237,10 @@ def handle_start_response_payload(chat_id, user_id, username, payload):
         send_message(chat_id, "Кастинг уже закрыт.")
         return True
 
+    if not _verify_response_channel_access(casting, user_id, source="start_response_payload"):
+        send_message(chat_id, RESPONSE_CHANNEL_MEMBERS_ONLY_MESSAGE)
+        return True
+
     model = find_model_for_user(user_id, username)
     if not model:
         print(
@@ -225,6 +333,17 @@ def handle_first_time_registration_flow(chat_id, user_id, message):
     if model.get("telegram_id") is None:
         update_model_telegram_id(model["id"], user_id)
 
+    casting = get_casting_by_id(casting_id)
+    if not _verify_response_channel_access(
+        casting,
+        user_id,
+        source="first_time_registration",
+        casting_id=casting_id,
+    ):
+        clear_user_state(user_id)
+        send_message(chat_id, RESPONSE_CHANNEL_MEMBERS_ONLY_MESSAGE)
+        return True
+
     if response_exists(casting_id, model["id"]):
         print(
             f"event=save_response_already_exists casting_id={casting_id} model_id={model['id']} "
@@ -287,6 +406,17 @@ def handle_response_comment_flow(chat_id, user_id, message):
         comment = cleaned_text
     else:
         send_message(chat_id, "Введите комментарий одним сообщением или нажмите «Пропустить».", reply_markup=_skip_keyboard())
+        return True
+
+    casting = get_casting_by_id(casting_id)
+    if not _verify_response_channel_access(
+        casting,
+        user_id,
+        source="response_comment",
+        casting_id=casting_id,
+    ):
+        clear_user_state(user_id)
+        send_message(chat_id, RESPONSE_CHANNEL_MEMBERS_ONLY_MESSAGE, reply_markup=_remove_keyboard())
         return True
 
     if response_exists(casting_id, model_id):

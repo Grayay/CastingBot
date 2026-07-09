@@ -107,6 +107,14 @@ def send_channel_photo(channel_id, photo_file_id, caption, reply_markup=None):
     return _safe_post_json("sendPhoto", payload, timeout=20)
 
 
+def get_chat_member(channel_id, user_id):
+    payload = {
+        "chat_id": channel_id,
+        "user_id": user_id,
+    }
+    return _safe_post_json("getChatMember", payload, timeout=20)
+
+
 def answer_callback(callback_query_id, text, show_alert=False):
     payload = {
         "callback_query_id": callback_query_id,
