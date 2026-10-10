@@ -427,7 +427,7 @@ def _active_castings(castings):
 
 
 def start_view_responses(chat_id, admin_id):
-    castings = get_castings_by_admin(admin_id)
+    castings = get_castings_by_admin(admin_id)[:90]
 
     if not castings:
         send_message(chat_id, "Нет кастингов для просмотра откликов.", reply_markup=build_main_menu(admin_id))
