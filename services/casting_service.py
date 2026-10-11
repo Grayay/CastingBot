@@ -1,4 +1,6 @@
+from config import CHIEF_BOOKER_IDS
 from database.db import get_connection
+from services.access_control import list_authorized_bookers
 
 
 def create_casting(
@@ -195,6 +197,36 @@ def get_all_castings():
         """
     )
     return cursor.fetchall()
+
+
+def get_responsible_bookers():
+    bookers = {item["telegram_id"]: dict(item) for item in list_authorized_bookers()}
+    for telegram_id in CHIEF_BOOKER_IDS:
+        bookers.setdefault(telegram_id, {"telegram_id": telegram_id})
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT DISTINCT ON (admin_id)
+            admin_id AS telegram_id,
+            responsible_admin_username AS username,
+            COALESCE(NULLIF(BTRIM(responsible_admin_full_name), ''), responsible_admin_name) AS full_name
+        FROM castings
+        WHERE is_deleted = FALSE
+        ORDER BY admin_id, created_at DESC, id DESC
+        """
+    )
+    # Retain historical owners even when their bot access has been removed.
+    # Casting identity fields also supply names for bookers added by ID only.
+    for item in cursor.fetchall():
+        telegram_id = item["telegram_id"]
+        booker = bookers.setdefault(telegram_id, {"telegram_id": telegram_id})
+        for field in ("username", "full_name"):
+            if not (booker.get(field) or "").strip():
+                booker[field] = item.get(field)
+
+    return [bookers[telegram_id] for telegram_id in sorted(bookers)]
 
 
 def get_responsible_bookers_for_brand_title(title):

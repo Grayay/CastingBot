@@ -11,6 +11,7 @@ from services.casting_service import (
     get_casting_by_id_for_admin,
     get_castings_by_admin,
     mark_casting_deleted_by_id,
+    get_responsible_bookers,
     get_responsible_bookers_for_brand_title,
     get_responses_for_casting,
 )
@@ -468,7 +469,83 @@ def start_close_casting(chat_id, admin_id):
     )
 
 
+def _show_responsible_bookers(chat_id, admin_id, bookers, page=0):
+    labels = list(bookers)
+    page = max(0, min(page, (len(labels) - 1) // 90))
+    keyboard = [[{"text": "Назад"}]]
+    keyboard.extend([{"text": label}] for label in labels[page * 90:(page + 1) * 90])
+    if page > 0:
+        keyboard.append([{"text": "Предыдущие букеры"}])
+    if (page + 1) * 90 < len(labels):
+        keyboard.append([{"text": "Следующие букеры"}])
+    set_user_state(
+        admin_id,
+        {
+            "flow": "select_casting_action",
+            "action": "view_booker_castings",
+            "bookers": bookers,
+            "page": page,
+        },
+    )
+    send_message(
+        chat_id,
+        "Выберите букера, чтобы увидеть его кастинги.",
+        reply_markup={"keyboard": keyboard, "resize_keyboard": True},
+    )
+
+
+def _handle_view_booker_castings(chat_id, admin_id, text, state):
+    if not is_chief_booker(admin_id):
+        clear_user_state(admin_id)
+        send_message(chat_id, "Недостаточно прав для просмотра кастингов букера.")
+        return True
+
+    bookers = state["bookers"]
+    if text in ("Предыдущие букеры", "Следующие букеры"):
+        page = state["page"] + (1 if text == "Следующие букеры" else -1)
+        _show_responsible_bookers(chat_id, admin_id, bookers, page)
+        return True
+
+    booker_id = bookers.get(text)
+    if booker_id is None:
+        send_message(chat_id, "Выберите букера кнопкой из списка.")
+        return True
+
+    castings = get_castings_by_admin(booker_id)
+    if not castings:
+        send_message(chat_id, f"У букера {text} нет кастингов.")
+        return True
+
+    lines = [f"Кастинги букера {text}:"]
+    for casting in castings:
+        closed_suffix = " [Закрыт]" if casting["is_closed"] else ""
+        lines.append(f"#{casting['id']} {casting['title']}{closed_suffix}")
+    result = "\n".join(lines)
+    while result:
+        # 2000 code points fit even when every character uses two UTF-16 units.
+        end = 2000
+        if len(result) > end and "\n" in result[:end]:
+            end = result.rfind("\n", 0, end) + 1
+        chunk, result = result[:end], result[end:]
+        if chunk.strip():
+            send_message(chat_id, chunk)
+    return True
+
+
 def start_view_responsible_booker(chat_id, admin_id):
+    if is_chief_booker(admin_id):
+        bookers = {}
+        for booker in get_responsible_bookers():
+            name = (booker.get("username") or booker.get("full_name") or "").strip()
+            label = f"{booker['telegram_id']} {' '.join(name.split())[:60]}".strip()
+            bookers[label] = booker["telegram_id"]
+        if not bookers:
+            clear_user_state(admin_id)
+            send_message(chat_id, "Нет букеров для просмотра.", reply_markup=build_main_menu(admin_id))
+            return
+        _show_responsible_bookers(chat_id, admin_id, bookers)
+        return
+
     castings = get_all_castings()
 
     if not castings:
@@ -522,6 +599,9 @@ def handle_select_casting_action(chat_id, admin_id, text):
         return True
 
     action = state.get("action")
+    if action == "view_booker_castings":
+        return _handle_view_booker_castings(chat_id, admin_id, text, state)
+
     casting_id = _extract_casting_id_from_text(text)
     if casting_id is None:
         send_message(chat_id, "Выберите кастинг кнопкой из списка.")
